@@ -1,0 +1,26 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Dependencies and build outputs
+node_modules/
+frontend/node_modules/
+frontend/dist/
+backend/.venv/
+__pycache__/
+*.py[cod]
+
+# Runtime logs and generated data
+*.log
+frontend/*.log
+scan-response.json
+eicher-*.json
+frontend/data/*
+!frontend/data/.gitkeep
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

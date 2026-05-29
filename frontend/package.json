@@ -1,0 +1,31 @@
+{
+  "name": "angel-options-trading-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "mock-api": "node mock-api.mjs",
+    "angel-api": "node angel-api.mjs",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "axios": "latest",
+    "lucide-react": "latest",
+    "recharts": "latest",
+    "zustand": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "typescript": "latest",
+    "vite": "latest",
+    "tailwindcss": "^3.4.17",
+    "postcss": "latest",
+    "autoprefixer": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest"
+  }
+}

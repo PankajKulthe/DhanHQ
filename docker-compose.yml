@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: trading
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+
+  worker:
+    build: ./backend
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO
+    env_file:
+      - .env
+    depends_on:
+      - backend
+      - redis
+      - postgres
+
+  beat:
+    build: ./backend
+    command: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO
+    env_file:
+      - .env
+    depends_on:
+      - backend
+      - redis
+      - postgres
+
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_API_PROXY: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+
+volumes:
+  postgres_data:
