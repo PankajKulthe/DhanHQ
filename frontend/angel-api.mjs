@@ -16,6 +16,20 @@ const NIFTY_50 = [
   "SHRIRAMFIN", "SBIN", "SUNPHARMA", "TCS", "TATACONSUM", "TATAMOTORS", "TATASTEEL",
   "TECHM", "TITAN", "TRENT", "ULTRACEMCO", "WIPRO"
 ];
+const SECTOR_MAP = {
+  ADANIENT: "Metals", ADANIPORTS: "Infrastructure", APOLLOHOSP: "Healthcare", ASIANPAINT: "Consumer",
+  AXISBANK: "Banking", "BAJAJ-AUTO": "Auto", BAJFINANCE: "Financials", BAJAJFINSV: "Financials",
+  BEL: "Industrials", BPCL: "Energy", BHARTIARTL: "Telecom", BRITANNIA: "Consumer", CIPLA: "Healthcare",
+  COALINDIA: "Energy", DRREDDY: "Healthcare", EICHERMOT: "Auto", GRASIM: "Cement", HCLTECH: "IT",
+  HDFCBANK: "Banking", HDFCLIFE: "Insurance", HEROMOTOCO: "Auto", HINDALCO: "Metals", HINDUNILVR: "Consumer",
+  ICICIBANK: "Banking", ITC: "Consumer", INDUSINDBK: "Banking", INFY: "IT", JSWSTEEL: "Metals",
+  KOTAKBANK: "Banking", LT: "Infrastructure", "M&M": "Auto", MARUTI: "Auto", NTPC: "Utilities",
+  NESTLEIND: "Consumer", ONGC: "Energy", POWERGRID: "Utilities", RELIANCE: "Energy", SBILIFE: "Insurance",
+  SHRIRAMFIN: "Financials", SBIN: "Banking", SUNPHARMA: "Healthcare", TCS: "IT", TATACONSUM: "Consumer",
+  TATAMOTORS: "Auto", TATASTEEL: "Metals", TECHM: "IT", TITAN: "Consumer", TRENT: "Consumer",
+  ULTRACEMCO: "Cement", WIPRO: "IT"
+};
+const BANK_NIFTY_NAMES = new Set(["AXISBANK", "HDFCBANK", "ICICIBANK", "INDUSINDBK", "KOTAKBANK", "SBIN"]);
 
 let scripMaster = {
   loadedAt: null,
@@ -37,6 +51,7 @@ let session = {
 };
 
 const cprCache = new Map();
+const filterState = new Map();
 
 function json(res, status, body) {
   res.writeHead(status, {
@@ -600,6 +615,227 @@ function persistScanResult(result) {
       timestamp
     })}\n`);
   }
+  for (const row of result.selected_atm_options) {
+    fs.appendFileSync(path.join(DATA_DIR, "option_selection_snapshots.jsonl"), `${JSON.stringify({
+      timestamp,
+      stock_symbol: row.stock_symbol,
+      option_symbol: row.option_symbol,
+      option_type: row.option_type,
+      premium: row.premium,
+      volume: row.volume,
+      turnover: row.turnover,
+      spread: row.spread,
+      vwap: row.vwap,
+      cpr_status: row.cpr_status,
+      momentum_score: row.momentum_score,
+      stock_momentum_score: row.stock_momentum_score,
+      smart_money_score: row.smart_money_score,
+      final_trade_score: row.final_trade_score,
+      eligible: row.eligible,
+      rejection_reasons: row.rejection_reasons
+    })}\n`);
+    fs.appendFileSync(path.join(DATA_DIR, "ai_feature_snapshots.jsonl"), `${JSON.stringify({
+      timestamp,
+      market_conditions: {
+        nifty_sentiment: result.nifty_sentiment,
+        sentiment_score: result.sentiment_score,
+        confidence_score: result.confidence_score,
+        market_regime: result.market_regime,
+        banknifty_alignment: result.enhanced_sentiment?.banknifty_alignment
+      },
+      stock_conditions: {
+        stock_symbol: row.stock_symbol,
+        sector: row.sector,
+        stock_bias: row.stock_bias,
+        stock_move_percent: row.underlying_change_pct,
+        stock_momentum_score: row.stock_momentum_score
+      },
+      option_conditions: {
+        option_symbol: row.option_symbol,
+        option_type: row.option_type,
+        premium: row.premium,
+        volume: row.volume,
+        oi: row.oi,
+        spread: row.spread,
+        vwap: row.vwap,
+        cpr_status: row.cpr_status,
+        momentum_score: row.momentum_score,
+        smart_money_score: row.smart_money_score
+      },
+      breakout_conditions: {
+        breakout_score: row.breakout_score,
+        session_move_pct: row.session_move_pct,
+        last_candle_move_pct: row.last_candle_move_pct
+      },
+      execution_conditions: {
+        final_trade_score: row.final_trade_score,
+        eligible: row.eligible,
+        rejection_reasons: row.rejection_reasons
+      },
+      trade_outcome: null
+    })}\n`);
+  }
+}
+
+function average(values) {
+  const clean = values.filter((value) => Number.isFinite(value));
+  return clean.length ? clean.reduce((sum, value) => sum + value, 0) / clean.length : 0;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function enhancedMarketSentiment({ stocks, stockSentiments, bullishCount, bearishCount, neutralCount }) {
+  const sectors = new Map();
+  for (const stock of stocks) {
+    const sector = SECTOR_MAP[String(stock.name).toUpperCase()] || "Other";
+    if (!sectors.has(sector)) {
+      sectors.set(sector, { sector, stocks: 0, advancing: 0, declining: 0, bullish: 0, bearish: 0, above_vwap: 0, below_vwap: 0, total_move: 0 });
+    }
+    const stat = sectors.get(sector);
+    const move = stock.quote.percent_change;
+    const avgPrice = numeric(stock.quote.avg_price);
+    stat.stocks += 1;
+    stat.total_move += move;
+    if (move > 0) stat.advancing += 1;
+    if (move < 0) stat.declining += 1;
+    if (avgPrice > 0 && stock.quote.ltp > avgPrice) stat.above_vwap += 1;
+    if (avgPrice > 0 && stock.quote.ltp < avgPrice) stat.below_vwap += 1;
+  }
+
+  for (const row of stockSentiments) {
+    const sector = SECTOR_MAP[String(row.stock_symbol).toUpperCase()] || "Other";
+    const stat = sectors.get(sector);
+    if (!stat) continue;
+    if (row.ce_above_cpr_bottom) stat.bullish += 1;
+    if (row.pe_above_cpr_bottom) stat.bearish += 1;
+  }
+
+  const sectorBreadth = [...sectors.values()].map((stat) => ({
+    ...stat,
+    avg_move: Number((stat.total_move / Math.max(stat.stocks, 1)).toFixed(2)),
+    net_breadth: stat.bullish - stat.bearish,
+    advance_decline: stat.advancing - stat.declining
+  }));
+  const sectorStrength = sectorBreadth.filter((sector) => sector.avg_move > 0 && sector.net_breadth >= 0).length;
+  const sectorWeakness = sectorBreadth.filter((sector) => sector.avg_move < 0 && sector.net_breadth <= 0).length;
+  const advancing = stocks.filter((stock) => stock.quote.percent_change > 0).length;
+  const declining = stocks.filter((stock) => stock.quote.percent_change < 0).length;
+  const aboveVwap = stocks.filter((stock) => numeric(stock.quote.avg_price) > 0 && stock.quote.ltp > numeric(stock.quote.avg_price)).length;
+  const belowVwap = stocks.filter((stock) => numeric(stock.quote.avg_price) > 0 && stock.quote.ltp < numeric(stock.quote.avg_price)).length;
+  const bankStocks = stocks.filter((stock) => BANK_NIFTY_NAMES.has(String(stock.name).toUpperCase()));
+  const bankAvgMove = average(bankStocks.map((stock) => stock.quote.percent_change));
+  const bankAlignment = bankAvgMove > 0.25 ? "POSITIVE" : bankAvgMove < -0.25 ? "NEGATIVE" : "NEUTRAL";
+  const avgMove = average(stocks.map((stock) => stock.quote.percent_change));
+  const volatilityProxy = average(stocks.map((stock) => Math.abs(stock.quote.percent_change)));
+
+  const bullishScore =
+    clamp((bullishCount / Math.max(stockSentiments.length, 1)) * 30, 0, 30) +
+    clamp((sectorStrength / Math.max(sectorBreadth.length, 1)) * 20, 0, 20) +
+    clamp((advancing / Math.max(stocks.length, 1)) * 20, 0, 20) +
+    clamp((aboveVwap / Math.max(stocks.length, 1)) * 20, 0, 20) +
+    (bankAlignment === "POSITIVE" ? 10 : 0);
+
+  const bearishScore =
+    clamp((bearishCount / Math.max(stockSentiments.length, 1)) * 30, 0, 30) +
+    clamp((sectorWeakness / Math.max(sectorBreadth.length, 1)) * 20, 0, 20) +
+    clamp((declining / Math.max(stocks.length, 1)) * 20, 0, 20) +
+    clamp((belowVwap / Math.max(stocks.length, 1)) * 20, 0, 20) +
+    (bankAlignment === "NEGATIVE" ? 10 : 0);
+
+  const sentimentScore = Number((bullishScore - bearishScore).toFixed(2));
+  const confidenceScore = Number(clamp(Math.abs(sentimentScore) + Math.abs(bullishCount - bearishCount), 0, 100).toFixed(2));
+  const marketRegime = volatilityProxy >= 2.5
+    ? "HIGH_VOLATILITY"
+    : sentimentScore >= 20 && avgMove > 0
+      ? "TRENDING_BULLISH"
+      : sentimentScore <= -20 && avgMove < 0
+        ? "TRENDING_BEARISH"
+        : volatilityProxy <= 0.8
+          ? "LOW_VOLATILITY"
+          : "SIDEWAYS";
+
+  return {
+    sentiment_score: sentimentScore,
+    confidence_score: confidenceScore,
+    market_regime: marketRegime,
+    advance_decline_ratio: declining > 0 ? Number((advancing / declining).toFixed(2)) : advancing,
+    advancing,
+    declining,
+    stocks_above_vwap: aboveVwap,
+    stocks_below_vwap: belowVwap,
+    banknifty_alignment: bankAlignment,
+    banknifty_avg_move: Number(bankAvgMove.toFixed(2)),
+    sector_strength_count: sectorStrength,
+    sector_weakness_count: sectorWeakness,
+    sector_breadth: sectorBreadth
+  };
+}
+
+function updateFilterLifecycle(stocks, strongStocks, generatedAt, minMove) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const strongBySymbol = new Map(strongStocks.map((stock) => [stock.stock_symbol, stock]));
+  for (const stock of stocks) {
+    const symbol = stock.name;
+    const isStrong = strongBySymbol.has(symbol);
+    const active = filterState.get(symbol);
+    if (isStrong && !active) {
+      const payload = { event: "ENTER_FILTER", timestamp: generatedAt, stock_symbol: symbol, move_percent: stock.quote.percent_change, threshold: minMove };
+      filterState.set(symbol, { entered_at: generatedAt, last_seen_at: generatedAt, move_percent: stock.quote.percent_change });
+      fs.appendFileSync(path.join(DATA_DIR, "filtered_stock_lifecycle.jsonl"), `${JSON.stringify(payload)}\n`);
+    } else if (isStrong && active) {
+      active.last_seen_at = generatedAt;
+      active.move_percent = stock.quote.percent_change;
+      filterState.set(symbol, active);
+    } else if (!isStrong && active) {
+      const payload = { event: "EXIT_FILTER", timestamp: generatedAt, stock_symbol: symbol, entered_at: active.entered_at, last_move_percent: stock.quote.percent_change, threshold: minMove };
+      filterState.delete(symbol);
+      fs.appendFileSync(path.join(DATA_DIR, "filtered_stock_lifecycle.jsonl"), `${JSON.stringify(payload)}\n`);
+    }
+  }
+  for (const stock of strongStocks) {
+    fs.appendFileSync(path.join(DATA_DIR, "filtered_stock_snapshots.jsonl"), `${JSON.stringify({ timestamp: generatedAt, ...stock })}\n`);
+  }
+}
+
+function smartMoneyScore(option) {
+  let score = 0;
+  const factors = {};
+  factors.option_volume_spike = option.volume >= 3 * 100000 || option.turnover >= 3 * 2000000;
+  factors.oi_buildup = option.oi > 0 && option.premium > option.vwap;
+  factors.premium_expansion = option.session_move_pct >= 5;
+  factors.tight_spread = option.spread !== null && option.spread <= 1.5;
+  factors.vwap_holding = option.vwap > 0 && option.premium > option.vwap;
+  if (factors.option_volume_spike) score += 25;
+  if (factors.oi_buildup) score += 20;
+  if (factors.premium_expansion) score += 20;
+  if (factors.tight_spread) score += 15;
+  if (factors.vwap_holding) score += 20;
+  return {
+    score: clamp(score, 0, 100),
+    label: score >= 80 ? "STRONG_INSTITUTIONAL" : score >= 60 ? "MEDIUM_PARTICIPATION" : "IGNORE",
+    factors
+  };
+}
+
+function stockMomentumScore(stock, sectorBreadth) {
+  const sector = SECTOR_MAP[String(stock.stock_symbol).toUpperCase()] || "Other";
+  const sectorStat = sectorBreadth.find((item) => item.sector === sector);
+  let score = 0;
+  const absMove = Math.abs(stock.stock_move_percent);
+  if (absMove >= 2) score += 25;
+  if (absMove >= 3) score += 15;
+  if (sectorStat && Math.sign(sectorStat.avg_move) === Math.sign(stock.stock_move_percent)) score += 20;
+  if (sectorStat && Math.abs(sectorStat.avg_move) >= 1) score += 10;
+  if (stock.ltp > 0 && stock.previous_close > 0) score += 10;
+  if (absMove >= 2.5) score += 20;
+  return { score: clamp(score, 0, 100), sector };
+}
+
+function finalTradeScore({ marketScore, stockScore, optionScore, breakoutScore = 0 }) {
+  const score = (marketScore * 0.25) + (stockScore * 0.25) + (optionScore * 0.35) + (breakoutScore * 0.15);
+  return Number(clamp(score, 0, 100).toFixed(2));
 }
 
 async function runScanner(config = {}) {
@@ -695,10 +931,12 @@ async function runScanner(config = {}) {
     : bearishCount > bullishCount + sentimentTolerance
       ? "NEGATIVE"
       : "SIDEWAYS";
+  const enhancedSentiment = enhancedMarketSentiment({ stocks, stockSentiments, bullishCount, bearishCount, neutralCount });
 
   const topGainers = [...stocks].sort((a, b) => b.quote.percent_change - a.quote.percent_change);
   const topLosers = [...stocks].sort((a, b) => a.quote.percent_change - b.quote.percent_change);
-  const strongStocks = stocks
+  const generatedAt = new Date().toISOString();
+  let strongStocks = stocks
     .filter((item) => Math.abs(item.quote.percent_change) >= minMove)
     .map((item) => ({
       stock_symbol: item.name,
@@ -709,6 +947,11 @@ async function runScanner(config = {}) {
       stock_move_percent: item.quote.percent_change,
       stock_bias: item.quote.percent_change >= 0 ? "BULLISH" : "BEARISH"
     }));
+  strongStocks = strongStocks.map((stock) => {
+    const momentum = stockMomentumScore(stock, enhancedSentiment.sector_breadth);
+    return { ...stock, stock_momentum_score: momentum.score, sector: momentum.sector };
+  });
+  updateFilterLifecycle(stocks, strongStocks, generatedAt, minMove);
 
   const selectedOptionDescriptors = [];
   if (niftySentiment !== "SIDEWAYS") {
@@ -761,6 +1004,30 @@ async function runScanner(config = {}) {
       strong_momentum: momentum.score >= minMomentumScore
     };
     const passed = Object.values(filters).every(Boolean);
+    const smartMoney = smartMoneyScore({
+      premium,
+      volume: numeric(oq.volume),
+      turnover,
+      oi: numeric(oq.oi),
+      spread,
+      vwap,
+      session_move_pct: momentum.session_move_pct
+    });
+    const stockMomentum = stockMomentumScore({
+      stock_symbol: item.stock.name,
+      stock_move_percent: item.stock.quote.percent_change,
+      ltp: item.stock.quote.ltp,
+      previous_close: item.stock.quote.close
+    }, enhancedSentiment.sector_breadth);
+    const marketAligned = (niftySentiment === "POSITIVE" && item.type === "CE") || (niftySentiment === "NEGATIVE" && item.type === "PE");
+    const marketScore = marketAligned ? enhancedSentiment.confidence_score : enhancedSentiment.confidence_score * 0.5;
+    const breakoutScore = momentum.score;
+    const tradeScore = finalTradeScore({
+      marketScore,
+      stockScore: stockMomentum.score,
+      optionScore: smartMoney.score,
+      breakoutScore
+    });
     return {
       stock_symbol: item.stock.name,
       symbol: item.stock.name,
@@ -796,6 +1063,14 @@ async function runScanner(config = {}) {
       momentum_score: momentum.score,
       momentum_label: momentum.label,
       momentum_details: momentum.details,
+      stock_momentum_score: stockMomentum.score,
+      sector: stockMomentum.sector,
+      smart_money_score: smartMoney.score,
+      smart_money_label: smartMoney.label,
+      smart_money_factors: smartMoney.factors,
+      market_score: Number(marketScore.toFixed(2)),
+      breakout_score: breakoutScore,
+      final_trade_score: tradeScore,
       session_move_pct: momentum.session_move_pct,
       last_candle_move_pct: momentum.last_candle_move_pct,
       preference: item.preference,
@@ -824,9 +1099,13 @@ async function runScanner(config = {}) {
     .map((item, index) => ({ ...item, final_rank: index + 1 }));
 
   const result = {
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt,
     nifty_sentiment: niftySentiment,
     sentiment: niftySentiment,
+    sentiment_score: enhancedSentiment.sentiment_score,
+    confidence_score: enhancedSentiment.confidence_score,
+    market_regime: enhancedSentiment.market_regime,
+    enhanced_sentiment: enhancedSentiment,
     bullish_count: bullishCount,
     bearish_count: bearishCount,
     neutral_count: neutralCount,

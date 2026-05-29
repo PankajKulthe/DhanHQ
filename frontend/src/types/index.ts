@@ -16,6 +16,9 @@ export type ScanResult = {
   bullish_count?: number;
   bearish_count?: number;
   neutral_count?: number;
+  sentiment_score?: number;
+  confidence_score?: number;
+  market_regime?: string;
   final_option_watchlist?: Record<string, unknown>[];
   selected_atm_options?: Record<string, unknown>[];
   strong_stocks?: Record<string, unknown>[];

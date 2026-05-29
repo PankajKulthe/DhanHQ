@@ -38,7 +38,7 @@ export function Dashboard() {
       <section className="mx-auto grid max-w-7xl gap-4 px-6 py-6 md:grid-cols-4">
         <MetricTile label="Daily PnL" value={`Rs ${analytics?.daily_pnl ?? 0}`} tone={(analytics?.daily_pnl ?? 0) >= 0 ? "gain" : "loss"} />
         <MetricTile label="Breadth Score" value={scan?.breadth_score ?? analytics?.nifty_breadth_score ?? 0} />
-        <MetricTile label="Sentiment" value={scan?.sentiment ?? analytics?.sentiment ?? "UNKNOWN"} />
+        <MetricTile label="Sentiment" value={scan?.nifty_sentiment ?? scan?.sentiment ?? analytics?.sentiment ?? "UNKNOWN"} />
         <MetricTile label="Moved >2%" value={scan?.moved_count ?? analytics?.stocks_moved_gt_2pct ?? 0} />
       </section>
 
@@ -60,6 +60,13 @@ export function Dashboard() {
               {scan?.bearish_count != null ? ` / Bearish: ${scan.bearish_count}` : ""}
               {scan?.neutral_count != null ? ` / Neutral: ${scan.neutral_count}` : ""}
             </div>
+            {scan && (
+              <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-neutral-600">
+                <div>Score <span className="font-semibold text-ink">{Number(scan.sentiment_score ?? 0).toFixed(1)}</span></div>
+                <div>Confidence <span className="font-semibold text-ink">{Number(scan.confidence_score ?? 0).toFixed(1)}</span></div>
+                <div>Regime <span className="font-semibold text-ink">{scan.market_regime ?? "-"}</span></div>
+              </div>
+            )}
             {scan?.nifty_sentiment === "SIDEWAYS" && <div className="mt-2 border border-amber bg-yellow-50 px-3 py-2 text-sm font-medium text-amber">Nifty sentiment is sideways, so final trade watchlist is disabled by rule.</div>}
             <div className="mt-3 h-60 overflow-auto border border-line">
               {((scan?.candidates?.length ? scan.candidates : scan?.selected_atm_options) ?? []).map((item, index) => (
@@ -75,6 +82,8 @@ export function Dashboard() {
                     <span>OI {Number(item.oi ?? 0).toLocaleString("en-IN")}</span>
                     <span>Turnover Rs {Number(item.turnover ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
                     <span>Momentum {String(item.momentum_label ?? "-")} {Number(item.momentum_score ?? 0)}</span>
+                    <span>Smart Money {Number(item.smart_money_score ?? 0)}</span>
+                    <span>Trade Score {Number(item.final_trade_score ?? 0)}</span>
                     <span>Strike {String(item.strike ?? "-")}</span>
                     <span>Spread {item.spread_pct == null ? "-" : `${Number(item.spread_pct).toFixed(2)}%`}</span>
                     <span>Session {Number(item.session_move_pct ?? 0).toFixed(2)}%</span>
