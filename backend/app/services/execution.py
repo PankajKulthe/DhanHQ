@@ -25,19 +25,31 @@ class ExecutionEngine:
             existing = db.query(Trade).filter(Trade.idempotency_key == idempotency_key).one()
             return existing
         if mode == "LIVE":
+            client_id = getattr(getattr(self.broker, "session", None), "client_code", "")
             payload = {
-                "variety": "NORMAL",
-                "tradingsymbol": trading_symbol,
-                "symboltoken": token,
-                "transactiontype": "BUY",
-                "exchange": "NFO",
-                "ordertype": "MARKET",
-                "producttype": "CARRYFORWARD",
-                "duration": "DAY",
-                "quantity": str(quantity),
+                "dhanClientId": client_id,
+                "correlationId": idempotency_key[:30],
+                "transactionType": "BUY",
+                "exchangeSegment": "NSE_FNO",
+                "productType": "INTRADAY",
+                "orderType": "MARKET",
+                "validity": "DAY",
+                "securityId": token,
+                "quantity": quantity,
+                "disclosedQuantity": 0,
+                "price": 0,
+                "triggerPrice": 0,
+                "afterMarketOrder": False,
             }
             trade.broker_order_id = self.broker.place_order(payload)
-            sl_payload = {**payload, "transactiontype": "SELL", "ordertype": "STOPLOSS_LIMIT", "price": str(risk.sl_limit_price), "triggerprice": str(risk.trigger_price)}
+            sl_payload = {
+                **payload,
+                "correlationId": f"{idempotency_key[:27]}-SL",
+                "transactionType": "SELL",
+                "orderType": "STOP_LOSS",
+                "price": risk.sl_limit_price,
+                "triggerPrice": risk.trigger_price,
+            }
             trade.sl_order_id = self.broker.place_order(sl_payload)
         else:
             trade.broker_order_id = f"PAPER-{trade.id}"

@@ -4,6 +4,9 @@ export type BrokerStatus = {
   client_code?: string;
   feed_connected: boolean;
   message: string;
+  active_segment?: string | null;
+  data_plan?: string | null;
+  data_validity?: string | null;
 };
 
 export type ScanResult = {
@@ -22,6 +25,9 @@ export type ScanResult = {
   final_option_watchlist?: Record<string, unknown>[];
   selected_atm_options?: Record<string, unknown>[];
   strong_stocks?: Record<string, unknown>[];
+  stock_sentiments?: Record<string, unknown>[];
+  top_gainers?: Record<string, unknown>[];
+  top_losers?: Record<string, unknown>[];
   candidates: Record<string, unknown>[];
 };
 
@@ -32,6 +38,23 @@ export type DailyAnalytics = {
   sentiment: string;
   trades_executed: number;
   daily_pnl: number;
+  realized_pnl?: number;
+  unrealized_pnl?: number;
   wins: number;
   losses: number;
+  latest_scan_at?: string | null;
+  bullish_count?: number;
+  bearish_count?: number;
+  neutral_count?: number;
+  storage?: Record<string, number>;
+  best_candidate?: Record<string, unknown> | null;
+  recent_scanned_options?: Record<string, unknown>[];
+  recent_trades?: Record<string, unknown>[];
+};
+
+export type BacktestResult = {
+  metrics: Record<string, unknown>;
+  trades: Record<string, unknown>[];
+  rules?: Record<string, unknown>;
+  source?: Record<string, unknown>;
 };

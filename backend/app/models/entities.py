@@ -12,7 +12,7 @@ class TimestampMixin:
 class BrokerSession(Base, TimestampMixin):
     __tablename__ = "broker_sessions"
     id: Mapped[int] = mapped_column(primary_key=True)
-    broker: Mapped[str] = mapped_column(String(32), default="ANGEL_ONE")
+    broker: Mapped[str] = mapped_column(String(32), default="DHAN")
     client_code: Mapped[str] = mapped_column(String(64), index=True)
     jwt_token_enc: Mapped[str] = mapped_column(Text)
     refresh_token_enc: Mapped[str] = mapped_column(Text)
@@ -93,6 +93,80 @@ class NiftySentiment(Base, TimestampMixin):
     bearish_count: Mapped[int] = mapped_column(Integer)
     neutral_count: Mapped[int] = mapped_column(Integer)
     sentiment: Mapped[str] = mapped_column(String(16), index=True)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class MarketSentiment(Base):
+    __tablename__ = "market_sentiment"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    bullish_count: Mapped[int] = mapped_column(Integer, default=0)
+    bearish_count: Mapped[int] = mapped_column(Integer, default=0)
+    neutral_count: Mapped[int] = mapped_column(Integer, default=0)
+    final_sentiment: Mapped[str] = mapped_column(String(16), index=True)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class StockSentimentSnapshot(Base):
+    __tablename__ = "stock_sentiment"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    stock_symbol: Mapped[str] = mapped_column(String(64), index=True)
+    stock_move_percent: Mapped[float] = mapped_column(Float, default=0)
+    ce_price: Mapped[float] = mapped_column(Float, default=0)
+    pe_price: Mapped[float] = mapped_column(Float, default=0)
+    ce_cpr_bottom: Mapped[float] = mapped_column(Float, default=0)
+    pe_cpr_bottom: Mapped[float] = mapped_column(Float, default=0)
+    stock_sentiment: Mapped[str] = mapped_column(String(32), index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class OptionWatchlistSnapshot(Base):
+    __tablename__ = "option_watchlist"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    stock_symbol: Mapped[str] = mapped_column(String(64), index=True)
+    option_symbol: Mapped[str] = mapped_column(String(128), index=True)
+    option_type: Mapped[str] = mapped_column(String(8), index=True)
+    premium: Mapped[float] = mapped_column(Float, default=0)
+    volume: Mapped[int] = mapped_column(Integer, default=0)
+    spread: Mapped[float | None] = mapped_column(Float)
+    vwap: Mapped[float | None] = mapped_column(Float)
+    cpr_status: Mapped[str] = mapped_column(String(32), index=True)
+    momentum_score: Mapped[float] = mapped_column(Float, default=0)
+    final_rank: Mapped[int | None] = mapped_column(Integer)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ScannedOptionSnapshot(Base):
+    __tablename__ = "scanned_option_snapshots"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    stock_symbol: Mapped[str] = mapped_column(String(64), index=True)
+    option_symbol: Mapped[str] = mapped_column(String(128), index=True)
+    option_type: Mapped[str] = mapped_column(String(8), index=True)
+    premium: Mapped[float] = mapped_column(Float, default=0)
+    volume: Mapped[int] = mapped_column(Integer, default=0)
+    spread: Mapped[float | None] = mapped_column(Float)
+    vwap: Mapped[float | None] = mapped_column(Float)
+    cpr_status: Mapped[str] = mapped_column(String(32), index=True)
+    momentum_score: Mapped[float] = mapped_column(Float, default=0)
+    smart_money_score: Mapped[float] = mapped_column(Float, default=0)
+    final_trade_score: Mapped[float] = mapped_column(Float, default=0)
+    eligible: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class FilteredStockSnapshot(Base):
+    __tablename__ = "filtered_stock_snapshots"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    stock_symbol: Mapped[str] = mapped_column(String(64), index=True)
+    stock_move_percent: Mapped[float] = mapped_column(Float, default=0)
+    stock_bias: Mapped[str] = mapped_column(String(16), index=True)
+    event: Mapped[str] = mapped_column(String(32), index=True)
+    entered_at: Mapped[datetime | None] = mapped_column(DateTime)
+    exited_at: Mapped[datetime | None] = mapped_column(DateTime)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     details: Mapped[dict] = mapped_column(JSON, default=dict)
 
 

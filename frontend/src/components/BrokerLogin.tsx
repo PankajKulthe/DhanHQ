@@ -5,14 +5,23 @@ import { useTradingStore } from "../store/useTradingStore";
 
 export function BrokerLogin() {
   const refresh = useTradingStore((s) => s.refresh);
-  const [form, setForm] = useState({ api_key: "", client_code: "", password: "", totp: "", totp_secret: "" });
+  const [form, setForm] = useState({ client_id: "", access_token: "", pin: "", totp: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   async function submit() {
     setError("");
-    if (!/^\d{4}$/.test(form.password.trim())) {
-      setError("Enter your 4-digit Angel One MPIN in the MPIN field.");
+    if (!form.client_id.trim()) {
+      setError("Enter your Dhan Client ID.");
+      return;
+    }
+    const hasAccessToken = form.access_token.trim().length > 0;
+    if (!hasAccessToken && !/^\d{6}$/.test(form.pin.trim())) {
+      setError("Enter your 6-digit Dhan PIN, or paste today's access token.");
+      return;
+    }
+    if (!hasAccessToken && !/^\d{6}$/.test(form.totp.trim())) {
+      setError("Enter the 6-digit Dhan TOTP.");
       return;
     }
     setBusy(true);
@@ -32,17 +41,17 @@ export function BrokerLogin() {
       <div className="mx-auto grid max-w-7xl gap-4 md:grid-cols-[1fr_auto] md:items-end">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold text-ink">
-            <KeyRound size={18} /> Angel One SmartAPI
+            <KeyRound size={18} /> DhanHQ v2
           </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {(["api_key", "client_code", "password", "totp", "totp_secret"] as const).map((key) => (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {(["client_id", "access_token", "pin", "totp"] as const).map((key) => (
               <input
                 key={key}
                 className="h-10 border border-line bg-white px-3 text-sm outline-none focus:border-ink"
-                type={key.includes("password") || key.includes("secret") ? "password" : "text"}
-                inputMode={key === "password" || key === "totp" ? "numeric" : "text"}
-                maxLength={key === "password" ? 4 : key === "totp" ? 6 : undefined}
-                placeholder={key === "password" ? "4 DIGIT MPIN" : key.replace("_", " ").toUpperCase()}
+                type={key === "access_token" || key === "pin" ? "password" : "text"}
+                inputMode={key === "pin" || key === "totp" ? "numeric" : "text"}
+                maxLength={key === "pin" || key === "totp" ? 6 : undefined}
+                placeholder={key === "access_token" ? "ACCESS TOKEN" : key === "pin" ? "6 DIGIT PIN" : key.replace("_", " ").toUpperCase()}
                 value={form[key]}
                 onChange={(e) => setForm({ ...form, [key]: e.target.value })}
               />

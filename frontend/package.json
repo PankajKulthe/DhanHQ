@@ -1,12 +1,11 @@
 {
-  "name": "angel-options-trading-platform",
+  "name": "dhan-options-trading-platform",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "mock-api": "node mock-api.mjs",
-    "angel-api": "node angel-api.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview --host 0.0.0.0"
   },

@@ -14,7 +14,7 @@ docker compose up --build
 ```
 
 4. Visit `http://localhost:8000/docs` and run `/health`.
-5. Open `http://localhost:5173` and connect Angel One in paper mode first.
+5. Open `http://localhost:5173` and connect Dhan in paper mode first.
 
 ## Production Checklist
 

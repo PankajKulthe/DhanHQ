@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "Angel Options Trading Platform"
+    app_name: str = "Dhan Options Trading Platform"
     environment: str = "development"
     api_v1_prefix: str = "/api/v1"
     database_url: str = Field(default="postgresql+psycopg://postgres:postgres@postgres:5432/trading")
@@ -13,10 +13,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
     credential_key: str = Field(default="change-me-32-byte-fernet-key")
-    angel_api_key: str = ""
-    angel_client_code: str = ""
-    angel_password: str = ""
-    angel_totp_secret: str = ""
+    dhan_client_id: str = ""
+    dhan_access_token: str = ""
+    dhan_totp_secret: str = ""
     live_trading_enabled: bool = False
     default_capital: float = 500000
     max_daily_loss: float = 12000

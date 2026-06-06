@@ -10,7 +10,6 @@ redis==5.2.1
 celery==5.4.0
 pandas==2.2.3
 numpy==2.2.1
-smartapi-python==1.5.5
 pyotp==2.9.0
 tenacity==9.0.0
 httpx==0.28.1

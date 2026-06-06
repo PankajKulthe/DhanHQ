@@ -19,7 +19,8 @@ def performance_metrics(trades: pd.DataFrame, starting_capital: float) -> dict:
     equity = starting_capital + pnl.cumsum()
     profit_factor = float(wins.sum() / abs(losses.sum())) if abs(losses.sum()) > 0 else float("inf")
     returns = equity.pct_change().fillna(0)
-    sharpe = float((returns.mean() / returns.std()) * np.sqrt(252)) if returns.std() else 0
+    sharpe_raw = float((returns.mean() / returns.std()) * np.sqrt(252)) if returns.std() else 0
+    sharpe = sharpe_raw if np.isfinite(sharpe_raw) else 0
     months = trades.assign(month=pd.to_datetime(trades["exit_time"]).dt.to_period("M")).groupby("month")["pnl"].sum().astype(float).to_dict()
     return {
         "trades": int(len(trades)),
