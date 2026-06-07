@@ -14,6 +14,14 @@ from app.schemas.trading import StrategyConfig
 
 
 SCRIP_MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master.csv"
+INDEX_CONSTITUENT_URLS = {
+    "NIFTY_50": "https://niftyindices.com/IndexConstituent/ind_nifty50list.csv",
+    "NIFTY_NEXT_50": "https://niftyindices.com/IndexConstituent/ind_niftynext50list.csv",
+}
+INDEX_NAMES = {
+    "NIFTY_50": "Nifty 50",
+    "NIFTY_NEXT_50": "Nifty Next 50",
+}
 NIFTY_50 = [
     "ADANIENT", "ADANIPORTS", "APOLLOHOSP", "ASIANPAINT", "AXISBANK", "BAJAJ-AUTO", "BAJFINANCE",
     "BAJAJFINSV", "BEL", "BPCL", "BHARTIARTL", "BRITANNIA", "CIPLA", "COALINDIA", "DRREDDY",
@@ -23,6 +31,19 @@ NIFTY_50 = [
     "SHRIRAMFIN", "SBIN", "SUNPHARMA", "TCS", "TATACONSUM", "TATAMOTORS", "TATASTEEL",
     "TECHM", "TITAN", "TRENT", "ULTRACEMCO", "WIPRO",
 ]
+NIFTY_NEXT_50_FALLBACK = [
+    "ABB", "ADANIENSOL", "ADANIGREEN", "ADANIPOWER", "AMBUJACEM", "DMART", "BAJAJHLDNG",
+    "BANKBARODA", "BPCL", "BOSCHLTD", "BRITANNIA", "CGPOWER", "CANBK", "CHOLAFIN",
+    "CUMMINSIND", "DLF", "DIVISLAB", "GAIL", "GODREJCP", "HDFCAMC", "HAL", "HINDZINC",
+    "HYUNDAI", "INDHOTEL", "IOC", "IRFC", "JINDALSTEL", "LTM", "LODHA", "MAZDOCK",
+    "MUTHOOTFIN", "PIDILITIND", "PFC", "PNB", "RECLTD", "MOTHERSON", "SHREECEM", "ENRIN",
+    "SIEMENS", "SOLARINDS", "TVSMOTOR", "TATACAP", "TMCV", "TATAPOWER", "TORNTPHARM",
+    "UNIONBANK", "UNITDSPR", "VBL", "VEDL", "ZYDUSLIFE",
+]
+INDEX_FALLBACKS = {
+    "NIFTY_50": NIFTY_50,
+    "NIFTY_NEXT_50": NIFTY_NEXT_50_FALLBACK,
+}
 SECTOR_MAP = {
     "ADANIENT": "Metals", "ADANIPORTS": "Infrastructure", "APOLLOHOSP": "Healthcare", "ASIANPAINT": "Consumer",
     "AXISBANK": "Banking", "BAJAJ-AUTO": "Auto", "BAJFINANCE": "Financials", "BAJAJFINSV": "Financials",
@@ -63,6 +84,7 @@ class ScripIndexes:
 
 
 _scrip_indexes: ScripIndexes | None = None
+_index_symbol_cache: dict[str, tuple[datetime, list[str]]] = {}
 _cpr_cache: dict[str, dict[str, Any]] = {}
 _filter_state: dict[str, dict[str, Any]] = {}
 
@@ -123,6 +145,40 @@ def normalize_instrument(row: dict[str, str]) -> DhanInstrument:
     )
 
 
+def fetch_index_symbols(universe: str) -> list[str]:
+    key = universe if universe in INDEX_CONSTITUENT_URLS else "NIFTY_50"
+    cached = _index_symbol_cache.get(key)
+    if cached and (datetime.utcnow() - cached[0]).total_seconds() < 60 * 60 * 6:
+        return cached[1]
+    fallback = INDEX_FALLBACKS.get(key, NIFTY_50)
+    try:
+        response = httpx.get(
+            INDEX_CONSTITUENT_URLS[key],
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "text/csv,application/csv,text/plain,*/*",
+                "Referer": "https://niftyindices.com/",
+            },
+            timeout=30,
+            follow_redirects=True,
+        )
+        response.raise_for_status()
+        reader = csv.DictReader(io.StringIO(response.text.lstrip("\ufeff")))
+        symbols = [
+            (row.get("Symbol") or row.get("SYMBOL") or row.get("symbol") or "").strip().upper()
+            for row in reader
+        ]
+        symbols = [symbol for symbol in symbols if symbol and not symbol.startswith("DUMMY")]
+        if symbols:
+            _index_symbol_cache[key] = (datetime.utcnow(), symbols)
+            return symbols
+    except Exception:
+        pass
+    symbols = list(fallback)
+    _index_symbol_cache[key] = (datetime.utcnow(), symbols)
+    return symbols
+
+
 def load_scrip_indexes(force: bool = False) -> ScripIndexes:
     global _scrip_indexes
     if _scrip_indexes and not force:
@@ -145,11 +201,11 @@ def load_scrip_indexes(force: bool = False) -> ScripIndexes:
         symbol = row.trading_symbol.upper()
         series = row.series.upper()
 
-        if exchange == "NSE" and segment == "E" and instrument == "EQUITY" and series == "EQ" and symbol in NIFTY_50:
+        if exchange == "NSE" and segment == "E" and instrument == "EQUITY" and series == "EQ":
             equities[symbol] = row
 
         if exchange == "NSE" and segment == "D" and instrument == "OPTSTK":
-            underlying = next((name for name in NIFTY_50 if symbol.startswith(f"{name}-")), None)
+            underlying = symbol.split("-", 1)[0].strip().upper()
             if underlying:
                 options.setdefault(underlying, []).append(row)
 
@@ -482,6 +538,9 @@ class DhanMarketScanner:
         active_segment = str((profile or {}).get("activeSegment") or "")
         if "E" not in active_segment or "D" not in active_segment:
             raise RuntimeError(f"Dhan account active segments do not include both Equity and Derivatives: {active_segment or 'unknown'}")
+        universe = config.universe if config.universe in INDEX_NAMES else "NIFTY_50"
+        index_name = INDEX_NAMES[universe]
+        universe_symbols = fetch_index_symbols(universe)
         indexes = load_scrip_indexes()
         generated_at = datetime.utcnow()
         min_move = config.min_underlying_move_pct
@@ -490,9 +549,9 @@ class DhanMarketScanner:
         max_spread_pct = config.max_spread_pct
         min_turnover = 2_000_000
         min_momentum_score = 50
-        symbols = [indexes.equities[name] for name in NIFTY_50 if name in indexes.equities]
+        symbols = [indexes.equities[name] for name in universe_symbols if name in indexes.equities]
         if not symbols:
-            raise RuntimeError("No Nifty 50 NSE equity symbols found in Dhan instrument master")
+            raise RuntimeError(f"No {index_name} NSE equity symbols found in Dhan instrument master")
 
         stock_quote_payloads = self.broker.quote_many("NSE_EQ", [symbol.security_id for symbol in symbols])
         stocks: list[dict[str, Any]] = []
@@ -526,6 +585,7 @@ class DhanMarketScanner:
         bullish_stock_list: list[str] = []
         bearish_stock_list: list[str] = []
         stock_sentiments: list[dict[str, Any]] = []
+        paired_symbols = {item["stock"]["symbol"] for item in atm_pairs}
 
         for item in atm_pairs:
             stock = item["stock"]
@@ -552,6 +612,8 @@ class DhanMarketScanner:
                 neutral_count += 1
             row = {
                 "stock_symbol": stock["symbol"],
+                "universe": universe,
+                "index_name": index_name,
                 "stock_move_percent": stock["quote"]["percent_change"],
                 "ce_symbol": ce.trading_symbol if ce else "",
                 "pe_symbol": pe.trading_symbol if pe else "",
@@ -583,8 +645,51 @@ class DhanMarketScanner:
                 )
             )
 
+        for stock in stocks:
+            if stock["symbol"] in paired_symbols:
+                continue
+            neutral_count += 1
+            row = {
+                "stock_symbol": stock["symbol"],
+                "universe": universe,
+                "index_name": index_name,
+                "stock_move_percent": stock["quote"]["percent_change"],
+                "ce_symbol": "",
+                "pe_symbol": "",
+                "ce_token": "",
+                "pe_token": "",
+                "ce_price": 0,
+                "pe_price": 0,
+                "ce_cpr_bottom": 0,
+                "pe_cpr_bottom": 0,
+                "ce_cpr_available": False,
+                "pe_cpr_available": False,
+                "ce_above_cpr_bottom": False,
+                "pe_above_cpr_bottom": False,
+                "stock_sentiment": "NEUTRAL",
+                "reason": "ATM stock option contract unavailable in Dhan instrument master",
+                "timestamp": generated_at.isoformat(),
+            }
+            stock_sentiments.append(row)
+            db.add(
+                StockSentimentSnapshot(
+                    stock_symbol=row["stock_symbol"],
+                    stock_move_percent=row["stock_move_percent"],
+                    ce_price=0,
+                    pe_price=0,
+                    ce_cpr_bottom=0,
+                    pe_cpr_bottom=0,
+                    stock_sentiment=row["stock_sentiment"],
+                    timestamp=generated_at,
+                    details=row,
+                )
+            )
+
         nifty_sentiment = "POSITIVE" if bullish_count > bearish_count else "NEGATIVE" if bearish_count > bullish_count else "SIDEWAYS"
         enhanced = enhanced_sentiment(stocks, bullish_count, bearish_count, len(stock_sentiments))
+        enhanced["universe"] = universe
+        enhanced["index_name"] = index_name
+        enhanced["index_symbols"] = universe_symbols
         db.add(
             MarketSentiment(
                 timestamp=generated_at,
@@ -604,6 +709,8 @@ class DhanMarketScanner:
             if abs(move) < min_move:
                 continue
             strong = {
+                "universe": universe,
+                "index_name": index_name,
                 "stock_symbol": stock["symbol"],
                 "trading_symbol": stock["instrument"].trading_symbol,
                 "token": stock["instrument"].security_id,
@@ -660,6 +767,8 @@ class DhanMarketScanner:
             }
             option_row = {
                 "stock_symbol": descriptor["stock"]["symbol"],
+                "universe": universe,
+                "index_name": index_name,
                 "symbol": descriptor["stock"]["symbol"],
                 "underlying": descriptor["stock"]["symbol"],
                 "underlying_token": descriptor["stock"]["instrument"].security_id,
@@ -762,6 +871,8 @@ class DhanMarketScanner:
         db.commit()
         return {
             "generated_at": generated_at,
+            "universe": universe,
+            "index_name": index_name,
             "sentiment": nifty_sentiment,
             "nifty_sentiment": nifty_sentiment,
             "breadth_score": bullish_count - bearish_count,

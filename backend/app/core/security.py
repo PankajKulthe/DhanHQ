@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 import base64
 import hashlib
 from cryptography.fernet import Fernet, InvalidToken
-from jose import jwt
+from jose import JWTError, jwt
 from passlib.context import CryptContext
 from app.core.config import get_settings
 
@@ -13,6 +13,23 @@ def create_access_token(subject: str) -> str:
     settings = get_settings()
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_minutes)
     return jwt.encode({"sub": subject, "exp": expire}, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def create_app_session_token() -> str:
+    settings = get_settings()
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.app_session_minutes)
+    return jwt.encode({"sub": "app_access", "exp": expire}, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def verify_app_session_token(token: str | None) -> bool:
+    if not token:
+        return False
+    settings = get_settings()
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        return False
+    return payload.get("sub") == "app_access"
 
 
 def hash_password(password: str) -> str:

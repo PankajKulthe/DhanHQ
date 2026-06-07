@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 import pandas as pd
 from sqlalchemy.orm import Session
@@ -6,6 +6,7 @@ from app.database.session import get_db
 from app.models.entities import ScannedOptionSnapshot
 from app.schemas.trading import BacktestRequest
 from app.services.auth_service import broker_auth_service
+from app.services.historical_cache import historical_cache_service
 
 router = APIRouter(prefix="/backtests", tags=["backtests"])
 
@@ -47,25 +48,47 @@ def run_backtest(payload: BacktestRequest, db: Session = Depends(get_db)) -> dic
     if not security_id:
         raise HTTPException(status_code=400, detail="security_id is required, or run scanner first to create a latest candidate")
 
-    candles = []
-    cursor = payload.from_date
-    while cursor <= payload.to_date:
-        chunk_end = min(cursor + timedelta(days=89), payload.to_date)
-        try:
-            candles.extend(
-                broker.historical_intraday(
-                    str(security_id),
-                    exchange_segment,
-                    instrument,
-                    payload.interval,
-                    f"{cursor.isoformat()} 09:15:00",
-                    f"{chunk_end.isoformat()} 15:30:00",
-                    oi=True,
+    from_ts = datetime.combine(payload.from_date, time(hour=9, minute=15))
+    to_ts = datetime.combine(payload.to_date, time(hour=15, minute=30))
+    candles = historical_cache_service.get(
+        db,
+        security_id=str(security_id),
+        exchange_segment=exchange_segment,
+        instrument=instrument,
+        interval=payload.interval,
+        from_ts=from_ts,
+        to_ts=to_ts,
+    )
+    cache_status = "hit" if candles else "miss"
+    cached_rows = len(candles)
+
+    if not candles:
+        cursor = payload.from_date
+        while cursor <= payload.to_date:
+            chunk_end = min(cursor + timedelta(days=89), payload.to_date)
+            try:
+                candles.extend(
+                    broker.historical_intraday(
+                        str(security_id),
+                        exchange_segment,
+                        instrument,
+                        payload.interval,
+                        f"{cursor.isoformat()} 09:15:00",
+                        f"{chunk_end.isoformat()} 15:30:00",
+                        oi=True,
+                    )
                 )
-            )
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Dhan historical data failed: {exc}") from exc
-        cursor = chunk_end + timedelta(days=1)
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"Dhan historical data failed: {exc}") from exc
+            cursor = chunk_end + timedelta(days=1)
+        cached_rows = historical_cache_service.save(
+            db,
+            security_id=str(security_id),
+            exchange_segment=exchange_segment,
+            instrument=instrument,
+            interval=payload.interval,
+            candles=candles,
+        )
 
     frame = pd.DataFrame(candles, columns=["ts", "open", "high", "low", "close", "volume", "oi"])
     if not frame.empty:
@@ -81,6 +104,8 @@ def run_backtest(payload: BacktestRequest, db: Session = Depends(get_db)) -> dic
         "instrument": instrument,
         "interval": payload.interval,
         "candles": len(candles),
+        "historical_cache": cache_status,
+        "cached_rows": cached_rows,
         "candidate_used": candidate.details if candidate else None,
     }
     return result

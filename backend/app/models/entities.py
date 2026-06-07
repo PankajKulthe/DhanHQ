@@ -52,6 +52,35 @@ class HistoricalCandle(Base):
     __table_args__ = (UniqueConstraint("symbol_id", "timeframe", "ts", name="uq_candle_symbol_tf_ts"),)
 
 
+class HistoricalDataCache(Base):
+    __tablename__ = "historical_data_cache"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    broker: Mapped[str] = mapped_column(String(32), default="DHAN", index=True)
+    security_id: Mapped[str] = mapped_column(String(32), index=True)
+    exchange_segment: Mapped[str] = mapped_column(String(32), index=True)
+    instrument: Mapped[str] = mapped_column(String(32), index=True)
+    interval: Mapped[str] = mapped_column(String(16), index=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, index=True)
+    open: Mapped[float] = mapped_column(Float)
+    high: Mapped[float] = mapped_column(Float)
+    low: Mapped[float] = mapped_column(Float)
+    close: Mapped[float] = mapped_column(Float)
+    volume: Mapped[int] = mapped_column(Integer, default=0)
+    oi: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (
+        UniqueConstraint(
+            "broker",
+            "security_id",
+            "exchange_segment",
+            "instrument",
+            "interval",
+            "ts",
+            name="uq_dhan_hist_cache_key",
+        ),
+    )
+
+
 class OptionChain(Base, TimestampMixin):
     __tablename__ = "option_chain"
     id: Mapped[int] = mapped_column(primary_key=True)

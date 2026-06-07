@@ -169,6 +169,19 @@ class DhanBroker:
     def fund_limit(self) -> dict[str, Any]:
         return self.request("GET", "/fundlimit")
 
+    def orders(self) -> list[dict[str, Any]]:
+        data = self.request("GET", "/orders")
+        if isinstance(data, list):
+            return data
+        rows = data.get("data") if isinstance(data, dict) else []
+        return rows if isinstance(rows, list) else []
+
+    def order_detail(self, order_id: str) -> dict[str, Any]:
+        data = self.request("GET", f"/orders/{order_id}")
+        if isinstance(data, list):
+            return data[0] if data else {}
+        return data
+
     def quote(self, exchange_segment: str, security_ids: list[str | int]) -> dict[str, Any]:
         clean_ids = [int(value) if str(value).isdigit() else str(value) for value in security_ids]
         return self.request(

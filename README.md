@@ -10,6 +10,8 @@ Production-oriented full-stack scaffold for Indian options trading on DhanHQ API
 - React + TypeScript dashboard with broker connection, market scan, risk state, TradingView chart, and Recharts widgets.
 - PostgreSQL, Redis, Celery worker/beat, Docker Compose, environment-driven configuration, and JSON logging.
 
+For the complete product explanation, current working status, strategy flow, modules, limitations, and roadmap, read [docs/PRODUCT_OVERVIEW.md](docs/PRODUCT_OVERVIEW.md).
+
 ## Safety Defaults
 
 Live trading is disabled unless `LIVE_TRADING_ENABLED=true` is set. The execution layer also requires an idempotency key per trade to prevent duplicate orders. Use paper mode until Dhan credentials, symbols, lot sizes, and order payloads have been verified against your Dhan account.

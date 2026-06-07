@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models.entities import Position, Trade, TradeLog
 from app.risk.manager import RiskDecision
+from app.services.alerts import alert_service
 
 logger = logging.getLogger(__name__)
 
@@ -58,4 +59,5 @@ class ExecutionEngine:
         db.add(TradeLog(trade_id=trade.id, event_type="ENTRY", message=f"{mode} BUY {trading_symbol} qty={quantity}", payload={"stop_loss": stop_loss, "target": target}))
         db.commit()
         db.refresh(trade)
+        alert_service.send_telegram(f"{mode} BUY {trading_symbol} qty={quantity} entry={entry_price} sl={stop_loss} target={target}")
         return trade

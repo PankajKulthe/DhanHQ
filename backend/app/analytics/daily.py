@@ -5,14 +5,52 @@ from app.models.entities import (
     FilteredStockSnapshot,
     MarketSentiment,
     OptionWatchlistSnapshot,
+    Position,
     ScannedOptionSnapshot,
+    Symbol,
     StockSentimentSnapshot,
     Trade,
 )
+from app.services.dhan_scanner import normalize_quote
 
 
 class DailyAnalyticsEngine:
-    def snapshot(self, db: Session, trade_date: date) -> dict:
+    def _refresh_unrealized_pnl(self, db: Session, broker=None) -> float:
+        open_positions = (
+            db.query(Position, Symbol)
+            .join(Symbol, Position.symbol_id == Symbol.id)
+            .filter(Position.status == "OPEN")
+            .all()
+        )
+        if not open_positions:
+            return 0.0
+
+        by_segment: dict[str, list[str]] = {}
+        for _position, symbol in open_positions:
+            exchange = (symbol.exchange or "").upper()
+            segment = "NSE_FNO" if exchange in {"NFO", "NSE_FNO"} else "NSE_EQ"
+            if symbol.token:
+                by_segment.setdefault(segment, []).append(str(symbol.token))
+
+        quotes: dict[str, dict] = {}
+        if broker:
+            for segment, security_ids in by_segment.items():
+                try:
+                    quotes.update(broker.quote_many(segment, security_ids))
+                except Exception:
+                    continue
+
+        total = 0.0
+        for position, symbol in open_positions:
+            quote = normalize_quote(quotes.get(str(symbol.token)))
+            ltp = float(quote.get("ltp") or position.ltp or position.avg_price or 0)
+            position.ltp = ltp
+            position.unrealized_pnl = (ltp - float(position.avg_price or 0)) * int(position.quantity or 0)
+            total += float(position.unrealized_pnl or 0)
+        db.commit()
+        return total
+
+    def snapshot(self, db: Session, trade_date: date, broker=None) -> dict:
         start = datetime.combine(trade_date, time.min)
         end = datetime.combine(trade_date, time.max)
         latest_sentiment = (
@@ -35,7 +73,7 @@ class DailyAnalyticsEngine:
         best_candidate = next((row for row in recent_options if row.eligible), recent_options[0] if recent_options else None)
         trades = db.query(Trade).filter(Trade.opened_at >= start, Trade.opened_at <= end).all()
         realized_pnl = sum(float(t.realized_pnl or 0) for t in trades)
-        open_unrealized = 0.0
+        open_unrealized = self._refresh_unrealized_pnl(db, broker=broker)
         daily_pnl = realized_pnl + open_unrealized
         wins = [t for t in trades if float(t.realized_pnl or 0) > 0]
         losses = [t for t in trades if float(t.realized_pnl or 0) < 0]

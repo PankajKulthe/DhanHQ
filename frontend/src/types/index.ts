@@ -7,10 +7,13 @@ export type BrokerStatus = {
   active_segment?: string | null;
   data_plan?: string | null;
   data_validity?: string | null;
+  token_expires_at?: string | null;
 };
 
 export type ScanResult = {
   generated_at: string;
+  universe?: "NIFTY_50" | "NIFTY_NEXT_50";
+  index_name?: string;
   sentiment: "POSITIVE" | "NEGATIVE" | "SIDEWAYS" | "BULLISH" | "BEARISH";
   nifty_sentiment?: "POSITIVE" | "NEGATIVE" | "SIDEWAYS";
   breadth_score: number;
@@ -57,4 +60,41 @@ export type BacktestResult = {
   trades: Record<string, unknown>[];
   rules?: Record<string, unknown>;
   source?: Record<string, unknown>;
+};
+
+export type OptionCandle = {
+  ts: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  oi?: number;
+};
+
+export type HistoricalOptionResponse = {
+  security_id: string;
+  exchange_segment: string;
+  instrument: string;
+  interval: string;
+  from_date: string;
+  to_date: string;
+  live: boolean;
+  cache: string;
+  candles: OptionCandle[];
+  vwap: { ts: string; value: number | null }[];
+  cpr: { date: string; pivot: number; bc: number; tc: number; source: string };
+  quote?: Record<string, unknown>;
+};
+
+export type LatestCandidate = {
+  timestamp: string;
+  eligible: boolean;
+  stock_symbol: string;
+  option_symbol: string;
+  option_type: string;
+  security_id: string;
+  exchange_segment: string;
+  instrument: string;
+  details: Record<string, unknown>;
 };

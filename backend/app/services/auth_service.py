@@ -1,6 +1,7 @@
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.brokers.dhan import DhanBroker, DhanSession
+from app.core.config import get_settings
 from app.core.security import decrypt_secret, encrypt_secret
 from app.models.entities import BrokerSession
 
@@ -29,6 +30,17 @@ class BrokerAuthService:
             .first()
         )
         if not stored:
+            settings = get_settings()
+            if settings.dhan_client_id and settings.dhan_access_token:
+                broker = DhanBroker(settings.dhan_client_id, access_token=settings.dhan_access_token)
+                try:
+                    profile = broker.profile()
+                    broker.session.profile = profile
+                except Exception:
+                    self._broker = None
+                    return None
+                self._broker = broker
+                return self._broker
             self._broker = None
             return None
         access_token = decrypt_secret(stored.jwt_token_enc)
@@ -90,6 +102,7 @@ class BrokerAuthService:
             "active_segment": profile.get("activeSegment") if isinstance(profile, dict) else None,
             "data_plan": data_plan or None,
             "data_validity": profile.get("dataValidity") if isinstance(profile, dict) else None,
+            "token_expires_at": broker.session.expires_at if connected and broker and broker.session else None,
         }
 
     def profile(self) -> dict:

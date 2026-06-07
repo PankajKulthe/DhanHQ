@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default="change-me-in-production")
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
+    app_access_password: str = ""
+    app_session_cookie: str = "app_session"
+    app_session_minutes: int = 720
     credential_key: str = Field(default="change-me-32-byte-fernet-key")
     dhan_client_id: str = ""
     dhan_access_token: str = ""

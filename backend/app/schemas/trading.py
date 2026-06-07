@@ -23,9 +23,11 @@ class BrokerStatus(BaseModel):
     active_segment: str | None = None
     data_plan: str | None = None
     data_validity: str | None = None
+    token_expires_at: datetime | None = None
 
 
 class StrategyConfig(BaseModel):
+    universe: str = Field(default="NIFTY_50", pattern="^(NIFTY_50|NIFTY_NEXT_50)$")
     mode: str = Field(default="PAPER", pattern="^(PAPER|LIVE)$")
     capital: float = 500000
     risk_per_trade: float = 6000
@@ -78,6 +80,8 @@ class OrderRequest(BaseModel):
 
 class ScanResult(BaseModel):
     generated_at: datetime
+    universe: str = "NIFTY_50"
+    index_name: str = "Nifty 50"
     sentiment: str
     breadth_score: int
     nifty_sentiment: str | None = None

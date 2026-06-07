@@ -5,19 +5,21 @@ import type { BacktestResult, BrokerStatus, DailyAnalytics, ScanResult } from ".
 type State = {
   status: BrokerStatus | null;
   scan: ScanResult | null;
+  scans: Record<string, ScanResult | null>;
   analytics: DailyAnalytics | null;
   backtest: BacktestResult | null;
   error: string;
   loading: boolean;
   backtestLoading: boolean;
   refresh: () => Promise<void>;
-  runScan: () => Promise<void>;
+  runScan: (universe?: "NIFTY_50" | "NIFTY_NEXT_50") => Promise<void>;
   runBacktest: (payload: Record<string, unknown>) => Promise<void>;
 };
 
 export const useTradingStore = create<State>((set) => ({
   status: null,
   scan: null,
+  scans: {},
   analytics: null,
   backtest: null,
   error: "",
@@ -36,12 +38,12 @@ export const useTradingStore = create<State>((set) => ({
       set({ error: maybeAxios.response?.data?.detail || maybeAxios.message || "Refresh failed", loading: false });
     }
   },
-  runScan: async () => {
+  runScan: async (universe = "NIFTY_50") => {
     set({ loading: true, error: "" });
     try {
-      const response = await api.post<ScanResult>("/market/scan", {});
+      const response = await api.post<ScanResult>("/market/scan", { universe });
       const analytics = await api.get<DailyAnalytics>("/analytics/daily");
-      set({ scan: response.data, analytics: analytics.data, loading: false });
+      set((state) => ({ scan: response.data, scans: { ...state.scans, [universe]: response.data }, analytics: analytics.data, loading: false }));
     } catch (err: unknown) {
       const maybeAxios = err as { response?: { data?: { detail?: string } }; message?: string };
       set({ error: maybeAxios.response?.data?.detail || maybeAxios.message || "Scanner failed", loading: false });
